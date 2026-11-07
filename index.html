@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="si">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EduFile Realtime Vault with Sub-folders</title>
+    
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+        import { getDatabase, ref, set, get, child, onValue, remove, push } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBearOY9wSoYuxrsXaX5pLYyiIfknaIhOs",
+            authDomain: "class-management-system-dc2c9.firebaseapp.com",
+            databaseURL: "https://class-management-system-dc2c9-default-rtdb.firebaseio.com",
+            projectId: "class-management-system-dc2c9",
+            storageBucket: "class-management-system-dc2c9.firebasestorage.app",
+            messagingSenderId: "488691123337",
+            appId: "1:488691123337:web:f235b473a8e72f261f7258"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        window.db = db;
+        window.dbRef = ref;
+        window.dbSet = set;
+        window.dbGet = get;
+        window.dbChild = child;
+        window.dbOnValue = onValue;
+        window.dbRemove = remove;
+        window.dbPush = push;
+
+        window.dispatchEvent(new Event('firebase-ready'));
+    </script>
+
+    <style>
+        body {
+            margin: 0; padding: 15px; background-color: #0b0f19;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #f3f4f6; display: flex; justify-content: center;
+        }
+        .container {
+            width: 100%; max-width: 500px; background: #131b2e; padding: 20px;
+            border-radius: 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.8);
+            border: 1px solid #1e293b; box-sizing: border-box;
+        }
+        h2 {
+            text-align: center; background: linear-gradient(135deg, #38bdf8, #818cf8);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            margin-bottom: 5px; font-size: 20px;
+        }
+        .subtitle { text-align: center; font-size: 11px; color: #94a3b8; margin-bottom: 20px; }
+        .section-box {
+            background: #0f172a; padding: 15px; border-radius: 12px;
+            border: 1px solid #1e293b; margin-bottom: 15px;
+        }
+        label { font-weight: bold; font-size: 12px; color: #cbd5e1; display: block; margin-bottom: 5px; }
+        input, select {
+            width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #334155;
+            background: #1e293b; color: #fff; border-radius: 8px; box-sizing: border-box; font-size: 14px;
+        }
+        .btn {
+            background: linear-gradient(135deg, #0284c7, #2563eb); color: white; border: none;
+            padding: 12px; width: 100%; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; transition: 0.2s;
+        }
+        .btn:active { transform: scale(0.98); }
+        .btn-success { background: linear-gradient(135deg, #10b981, #059669); }
+        .btn-danger { background: #ef4444; padding: 5px 10px; font-size: 11px; width: auto; }
+        
+        .folder-grid {
+            display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 10px;
+        }
+        .folder-card {
+            background: #1e293b; padding: 15px; border-radius: 10px;
+            border: 1px solid #334155; cursor: pointer; transition: 0.2s;
+        }
+        .folder-card:hover { border-color: #38bdf8; }
+        .folder-title { font-weight: bold; font-size: 14px; margin-bottom: 5px; color: #fff; }
+        .folder-meta { font-size: 11px; color: #94a3b8; }
+        
+        .file-list { margin-top: 10px; }
+        .file-item {
+            background: #1e293b; padding: 10px 12px; border-radius: 8px; margin-bottom: 8px;
+            font-size: 12px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #334155;
+        }
+        .back-btn { background: #475569; margin-bottom: 15px; }
+        
+        #loginOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #0b0f19; display: flex; justify-content: center; align-items: center; z-index: 9999;
+        }
+        .login-card {
+            width: 100%; max-width: 380px; background: #131b2e; padding: 25px;
+            border-radius: 20px; border: 1px solid #1e293b; text-align: center; box-shadow: 0 15px 35px rgba(0,0,0,0.8);
+        }
+    </style>
+</head>
+<body>
+
+<!-- 🔒 LOGIN OVERLAY -->
+<div id="loginOverlay" style="display: none;">
+    <div class="login-card">
+        <h2>🔒 EduFile Sub-folder Vault</h2>
+        <div class="subtitle" style="margin-bottom: 15px;">මුරපදය ඇතුළත් කර ඇතුළු වන්න</div>
+        <label>ප්‍රවේශ මුරපදය (PIN):</label>
+        <input type="password" id="pinInput" placeholder=" Viewer (1234)">
+        <button class="btn btn-success" onclick="verifyPin()">පද්ධතියට ඇතුළු වන්න</button>
+        <div id="pinError" style="color: #ef4444; font-size: 12px; margin-top: 10px; display: none;">⚠️ වැරදි මුරපදයක්! කරුණාකර නැවත උත්සාහ කරන්න.</div>
+    </div>
+</div>
+
+<!-- 📂 MAIN SYSTEM CONTAINER -->
+<div class="container" id="mainSystem" style="display: none;">
+    <h2>📚 EduFile Sub-Weekly English</h2>
+    <div class="subtitle" id="userRoleIndicator">විෂයයන් සහ උප ෆෝල්ඩර පද්ධතිය</div>
+
+    <!-- Main View (Parent Folders Dashboard) -->
+    <div id="folderDashboard">
+        <div class="section-box" id="adminCreateBox" style="display: none;">
+            <label>නව ප්‍රධාන ෆෝල්ඩරයක් සාදන්න (Admin):</label>
+            <input type="text" id="newFolderName" placeholder="උදා: Grade 11 Paper Class">
+            <label>ෆෝල්ඩරයේ වර්ණය:</label>
+            <select id="newFolderColor">
+                <option value="#0284c7">🔵 නිල් (Blue)</option>
+                <option value="#10b981">🟢 කොළ (Green)</option>
+                <option value="#f59e0b">🟠 රන්වන් (Gold)</option>
+                <option value="#8b5cf6">🟣 දම් (Purple)</option>
+                <option value="#ef4444">🔴 රතු (Red)</option>
+            </select>
+            <button class="btn" onclick="createParentFolder()">ප්‍රදාන ෆෝල්ඩරය සාදන්න</button>
+        </div>
+
+        <div class="section-box">
+            <label>📁 පවතින ප්‍රධාන ෆෝල්ඩර ලැයිස්තුව:</label>
+            <div class="folder-grid" id="folderGridContainer">
+                <div style="color: #94a3b8; font-size: 12px; grid-column: span 2; text-align: center;">පූරණය වෙමින් පවතී...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Inside Parent Folder -> Sub-folders Dashboard View -->
+    <div id="subFolderDashboardView" style="display: none;">
+        <button class="btn back-btn" onclick="goBackToDashboard()">⬅️ සියලුම ප්‍රධාන ෆෝල්ඩර වෙත යන්න</button>
+        
+        <h3 id="activeParentFolderTitle" style="color: #38bdf8; margin-top: 0; font-size: 18px;">ප්‍රධාන ෆෝල්ඩරය</h3>
+
+        <div class="section-box" id="adminSubFolderCreateBox" style="display: none;">
+            <label>📂 මෙම ප්‍රධාන ෆෝල්ඩරය තුළ නව උප ෆෝල්ඩරයක් (Sub-folder) සාදන්න:</label>
+            <input type="text" id="newSubFolderName" placeholder="උදා: Model Papers / Answers / Short Notes">
+            <button class="btn" onclick="createSubFolder()">උප ෆෝල්ඩරය සාදන්න</button>
+        </div>
+
+        <div class="section-box">
+            <label>📁 මෙම ප්‍රධාන ෆෝල්ඩරයේ ඇති උප ෆෝල්ඩර:</label>
+            <div class="folder-grid" id="subFolderGridContainer">
+                <div style="color: #94a3b8; font-size: 12px; grid-column: span 2; text-align: center;">උප ෆෝල්ඩර නොමැත.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Inside Sub-folder -> Files View -->
+    <div id="fileDetailView" style="display: none;">
+        <button class="btn back-btn" onclick="goBackToSubFolderDashboard()">⬅️ උප ෆෝල්ඩර වෙත ආපසු යන්න</button>
+        
+        <h3 id="activeSubFolderTitle" style="color: #38bdf8; margin-top: 0; font-size: 18px;">උප ෆෝල්ඩරය</h3>
+
+        <div class="section-box" id="adminUploadBox" style="display: none;">
+            <label>📄 මෙම උප ෆෝල්ඩරයට File එකක් එක් කරන්න (Admin):</label>
+            <input type="text" id="fileNameInput" placeholder="ෆයිල් එකේ නම (උදා: Paper 01 Notes)">
+            <input type="text" id="fileLinkInput" placeholder="ෆයිල් ලින්ක් එක (Google Drive Link හෝ URL)">
+            <button class="btn btn-success" onclick="addFileToSubFolder()">ෆයිල් එක Upload කරන්න</button>
+        </div>
+
+        <div class="section-box">
+            <label>📋 මෙම උප ෆෝල්ඩරයේ අඩංගු ෆයිල්:</label>
+            <div class="file-list" id="fileListContainer">
+                <div style="color: #94a3b8; font-size: 12px; text-align: center;">මෙම උප ෆෝල්ඩරයේ ෆයිල් නොමැත.</div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    const ADMIN_PIN = "2026";
+    const VIEWER_PIN = "1234";
+    let currentUserRole = ""; 
+    let vaultData = {};
+    let activeParentKey = null;
+    let activeSubKey = null;
+
+    window.addEventListener('firebase-ready', () => {
+        let savedRole = sessionStorage.getItem("edufile_role");
+        if (savedRole) {
+            currentUserRole = savedRole;
+            initSystem();
+            startRealtimeSync();
+        } else {
+            document.getElementById("loginOverlay").style.display = "flex";
+        }
+    });
+
+    function verifyPin() {
+        let enteredPin = document.getElementById("pinInput").value.trim();
+        let errorDiv = document.getElementById("pinError");
+
+        if (enteredPin === ADMIN_PIN) {
+            currentUserRole = "admin";
+            sessionStorage.setItem("edufile_role", "admin");
+            initSystem();
+            startRealtimeSync();
+        } else if (enteredPin === VIEWER_PIN) {
+            currentUserRole = "viewer";
+            sessionStorage.setItem("edufile_role", "viewer");
+            initSystem();
+            startRealtimeSync();
+        } else {
+            errorDiv.style.display = "block";
+        }
+    }
+
+    function initSystem() {
+        document.getElementById("loginOverlay").style.display = "none";
+        document.getElementById("mainSystem").style.display = "block";
+
+        if (currentUserRole === "admin") {
+            document.getElementById("userRoleIndicator").textContent = "උප ෆෝල්ඩර සහ දත්ත කළමනාකරණය (Admin Mode)";
+            document.getElementById("adminCreateBox").style.display = "block";
+        } else {
+            document.getElementById("userRoleIndicator").textContent = "විෂය ද්‍රව්‍ය නරඹන මධ්‍යස්ථානය (Viewer Mode - Live)";
+            document.getElementById("adminCreateBox").style.display = "none";
+        }
+    }
+
+    function startRealtimeSync() {
+        let dbRef = window.dbRef(window.db, "edufile_nested_vault");
+        window.dbOnValue(dbRef, (snapshot) => {
+            vaultData = snapshot.val() || {};
+            
+            // Update current views based on active navigation
+            if (activeParentKey && vaultData[activeParentKey]) {
+                if (activeSubKey && vaultData[activeParentKey].subFolders && vaultData[activeParentKey].subFolders[activeSubKey]) {
+                    renderFiles();
+                } else {
+                    openParentFolder(activeParentKey, true);
+                }
+            } else {
+                renderParentFolders();
+            }
+        });
+    }
+
+    function createParentFolder() {
+        if (currentUserRole !== "admin") return;
+        let name = document.getElementById("newFolderName").value.trim();
+        let color = document.getElementById("newFolderColor").value;
+
+        if (name === "") {
+            alert("කරුණාකර ප්‍රධාන ෆෝල්ඩරයේ නම ඇතුළත් කරන්න!");
+            return;
+        }
+
+        let newRef = window.dbPush(window.dbRef(window.db, "edufile_nested_vault"));
+        window.dbSet(newRef, {
+            name: name,
+            color: color,
+            subFolders: {}
+        }).then(() => {
+            document.getElementById("newFolderName").value = "";
+        });
+    }
+
+    function renderParentFolders() {
+        let container = document.getElementById("folderGridContainer");
+        let keys = Object.keys(vaultData);
+
+        if (keys.length === 0) {
+            container.innerHTML = '<div style="color: #94a3b8; font-size: 12px; grid-column: span 2; text-align: center;">තවම ප්‍රධාන ෆෝල්ඩර සාදා නැත.</div>';
+            return;
+        }
+
+        container.innerHTML = "";
+        keys.forEach((key) => {
+            let folder = vaultData[key];
+            let subCount = folder.subFolders ? Object.keys(folder.subFolders).length : 0;
+            let card = document.createElement("div");
+            card.className = "folder-card";
+            card.style.borderLeft = `5px solid ${folder.color}`;
+            
+            let deleteBtnHtml = currentUserRole === "admin" ? `<button class="btn-danger" style="margin-top:8px;" onclick="event.stopPropagation(); deleteParentFolder('${key}')">මැකීමට</button>` : '';
+
+            card.innerHTML = `
+                <div class="folder-title">📁 ${folder.name}</div>
+                <div class="folder-meta">උප ෆෝල්ඩර ගණන: ${subCount}</div>
+                ${deleteBtnHtml}
+            `;
+            card.onclick = () => openParentFolder(key);
+            container.appendChild(card);
+        });
+    }
+
+    function openParentFolder(key, preserveSub = false) {
+        activeParentKey = key;
+        if (!preserveSub) activeSubKey = null;
+
+        let folder = vaultData[key];
+        document.getElementById("folderDashboard").style.display = "none";
+        document.getElementById("subFolderDashboardView").style.display = "block";
+        document.getElementById("fileDetailView").style.display = "none";
+        document.getElementById("activeParentFolderTitle").textContent = "ප්‍රධාන ෆෝල්ඩරය: " + folder.name;
+
+        if (currentUserRole === "admin") {
+            document.getElementById("adminSubFolderCreateBox").style.display = "block";
+        } else {
+            document.getElementById("adminSubFolderCreateBox").style.display = "none";
+        }
+
+        renderSubFolders();
+    }
+
+    function goBackToDashboard() {
+        activeParentKey = null;
+        activeSubKey = null;
+        document.getElementById("subFolderDashboardView").style.display = "none";
+        document.getElementById("folderDashboard").style.display = "block";
+        renderParentFolders();
+    }
+
+    function createSubFolder() {
+        if (currentUserRole !== "admin" || !activeParentKey) return;
+        let name = document.getElementById("newSubFolderName").value.trim();
+
+        if (name === "") {
+            alert("කරුණාකර උප ෆෝල්ඩරයේ නම ඇතුළත් කරන්න!");
+            return;
+        }
+
+        let newSubRef = window.dbPush(window.dbRef(window.db, `edufile_nested_vault/${activeParentKey}/subFolders`));
+        window.dbSet(newSubRef, {
+            name: name,
+            files: {}
+        }).then(() => {
+            document.getElementById("newSubFolderName").value = "";
+        });
+    }
+
+    function renderSubFolders() {
+        let container = document.getElementById("subFolderGridContainer");
+        let parentFolder = vaultData[activeParentKey];
+        let subFolders = parentFolder && parentFolder.subFolders ? parentFolder.subFolders : {};
+        let keys = Object.keys(subFolders);
+
+        if (keys.length === 0) {
+            container.innerHTML = '<div style="color: #94a3b8; font-size: 12px; grid-column: span 2; text-align: center;">මෙම ප්‍රධාන ෆෝල්ඩරය තුළ උප ෆෝල්ඩර නොමැත.</div>';
+            return;
+        }
+
+        container.innerHTML = "";
+        keys.forEach((subKey) => {
+            let sub = subFolders[subKey];
+            let fileCount = sub.files ? Object.keys(sub.files).length : 0;
+            let card = document.createElement("div");
+            card.className = "folder-card";
+            card.style.borderLeft = `5px solid #38bdf8`;
+            
+            let deleteBtnHtml = currentUserRole === "admin" ? `<button class="btn-danger" style="margin-top:8px;" onclick="event.stopPropagation(); deleteSubFolder('${subKey}')">මැකීමට</button>` : '';
+
+            card.innerHTML = `
+                <div class="folder-title">📂 ${sub.name}</div>
+                <div class="folder-meta">ෆයිල් ගණන: ${fileCount}</div>
+                ${deleteBtnHtml}
+            `;
+            card.onclick = () => openSubFolder(subKey);
+            container.appendChild(card);
+        });
+    }
+
+    function openSubFolder(subKey) {
+        activeSubKey = subKey;
+        let subFolder = vaultData[activeParentKey].subFolders[subKey];
+
+        document.getElementById("subFolderDashboardView").style.display = "none";
+        document.getElementById("fileDetailView").style.display = "block";
+        document.getElementById("activeSubFolderTitle").textContent = "උප ෆෝල්ඩරය: " + subFolder.name;
+
+        if (currentUserRole === "admin") {
+            document.getElementById("adminUploadBox").style.display = "block";
+        } else {
+            document.getElementById("adminUploadBox").style.display = "none";
+        }
+
+        renderFiles();
+    }
+
+    function goBackToSubFolderDashboard() {
+        activeSubKey = null;
+        document.getElementById("fileDetailView").style.display = "none";
+        document.getElementById("subFolderDashboardView").style.display = "block";
+        renderSubFolders();
+    }
+
+    function addFileToSubFolder() {
+        if (currentUserRole !== "admin" || !activeParentKey || !activeSubKey) return;
+        let name = document.getElementById("fileNameInput").value.trim();
+        let link = document.getElementById("fileLinkInput").value.trim();
+
+        if (name === "" || link === "") {
+            alert("කරුණාකර ෆයිල් නම සහ ලින්ක් එක දෙකම ඇතුළත් කරන්න!");
+            return;
+        }
+
+        let newFileRef = window.dbPush(window.dbRef(window.db, `edufile_nested_vault/${activeParentKey}/subFolders/${activeSubKey}/files`));
+        window.dbSet(newFileRef, { name: name, link: link }).then(() => {
+            document.getElementById("fileNameInput").value = "";
+            document.getElementById("fileLinkInput").value = "";
+        });
+    }
+
+    function renderFiles() {
+        let container = document.getElementById("fileListContainer");
+        let subFolder = vaultData[activeParentKey]?.subFolders?.[activeSubKey];
+        let files = subFolder && subFolder.files ? subFolder.files : {};
+        let keys = Object.keys(files);
+
+        if (keys.length === 0) {
+            container.innerHTML = '<div style="color: #94a3b8; font-size: 12px; text-align: center;">මෙම උප ෆෝල්ඩරයේ ෆයිල් නොමැත.</div>';
+            return;
+        }
+
+        container.innerHTML = "";
+        keys.forEach((fileKey) => {
+            let file = files[fileKey];
+            let deleteFileBtn = currentUserRole === "admin" ? `<button class="btn-danger" onclick="deleteFile('${fileKey}')">ඉවත්</button>` : '';
+
+            let item = document.createElement("div");
+            item.className = "file-item";
+            item.innerHTML = `
+                <div>
+                    <b>📄 ${file.name}</b><br>
+                    <a href="${file.link}" target="_blank" style="color: #38bdf8; font-size: 11px;">🔗 File එක විවෘත කරන්න / Download කරගන්න</a>
+                </div>
+                ${deleteFileBtn}
+            `;
+            container.innerHTML += item.outerHTML; // fixed rendering appending cleanly
+        });
+        
+        // Re-render safely using innerHTML loop assignment
+        container.innerHTML = "";
+        keys.forEach((fileKey) => {
+            let file = files[fileKey];
+            let deleteFileBtn = currentUserRole === "admin" ? `<button class="btn-danger" onclick="deleteFile('${fileKey}')">ඉවත්</button>` : '';
+
+            let item = document.createElement("div");
+            item.className = "file-item";
+            item.innerHTML = `
+                <div>
+                    <b>📄 ${file.name}</b><br>
+                    <a href="${file.link}" target="_blank" style="color: #38bdf8; font-size: 11px;">🔗 File එක විවෘත කරන්න / Download කරගන්න</a>
+                </div>
+                ${deleteFileBtn}
+            `;
+            container.appendChild(item);
+        });
+    }
+
+    function deleteParentFolder(key) {
+        if (currentUserRole !== "admin") return;
+        if (confirm("මෙම ප්‍රධාන ෆෝල්ඩරය සහ එහි අඩංගු සියලුම උප ෆෝල්ඩර සහ ෆයිල් මකා දැමීමට අවශ්‍යමද?")) {
+            window.dbRemove(window.dbRef(window.db, `edufile_nested_vault/${key}`));
+        }
+    }
+
+    function deleteSubFolder(subKey) {
+        if (currentUserRole !== "admin") return;
+        if (confirm("මෙම උප ෆෝල්ඩරය සහ එහි අඩංගු ෆයිල් මකා දැමීමට අවශ්‍යමද?")) {
+            window.dbRemove(window.dbRef(window.db, `edufile_nested_vault/${activeParentKey}/subFolders/${subKey}`));
+        }
+    }
+
+    function deleteFile(fileKey) {
+        if (currentUserRole !== "admin") return;
+        if (confirm("මෙම ෆයිල් එක ඉවත් කිරීමට අවශ්‍යද?")) {
+            window.dbRemove(window.dbRef(window.db, `edufile_nested_vault/${activeParentKey}/subFolders/${activeSubKey}/files/${fileKey}`));
+        }
+    }
+</script>
+
+</body>
+</html>
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title></title>
+</head>
+
+<body>
+  
+</body>
+
+</html>
